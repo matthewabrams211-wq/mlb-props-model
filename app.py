@@ -59,13 +59,15 @@ def fetch_game_logs(player_id: int):
     for season in seasons:
         season_err = None
         try:
-            data = statsapi.get('person_stats', {
-                'personId': player_id,
-                'stats': 'gameLog',
-                'group': 'hitting',
-                'season': season,
-            })
-            splits = (data.get('stats') or [{}])[0].get('splits', [])
+            import requests as _requests
+            resp = _requests.get(
+                f'https://statsapi.mlb.com/api/v1/people/{player_id}/stats',
+                params={'stats': 'gameLog', 'group': 'hitting', 'season': season},
+                timeout=15
+            )
+            resp.raise_for_status()
+            stats_list = resp.json().get('stats', [])
+            splits = stats_list[0].get('splits', []) if stats_list else []
             errors.append(f"Season {season}: {len(splits)} splits")
             for split in splits:
                 stat      = split.get('stat', {})

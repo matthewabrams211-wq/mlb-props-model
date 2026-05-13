@@ -1,8 +1,10 @@
+import requests
 import statsapi
 import pandas as pd
 from datetime import datetime
 
 CURRENT_YEAR = datetime.now().year
+MLB_API = 'https://statsapi.mlb.com/api/v1'
 
 
 def lookup_player(name: str) -> dict:
@@ -16,18 +18,17 @@ def lookup_player(name: str) -> dict:
 
 
 def _fetch_season_splits(player_id: int, season: int) -> list:
-    """Fetch game log splits for one season using the raw stats endpoint."""
-    data = statsapi.get('person_stats', {
-        'personId': player_id,
+    """Call the MLB Stats API directly — bypasses the statsapi library."""
+    url = f"{MLB_API}/people/{player_id}/stats"
+    resp = requests.get(url, params={
         'stats': 'gameLog',
         'group': 'hitting',
         'season': season,
-    })
-    # Response: {"stats": [{"splits": [...]}]}
-    stats_list = data.get('stats', [])
-    if not stats_list:
-        return []
-    return stats_list[0].get('splits', [])
+    }, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    stats = data.get('stats', [])
+    return stats[0].get('splits', []) if stats else []
 
 
 def get_game_logs(player_id: int, seasons: list = None) -> pd.DataFrame:
