@@ -59,10 +59,13 @@ def fetch_game_logs(player_id: int):
     for season in seasons:
         season_err = None
         try:
-            data = statsapi.player_stat_data(
-                player_id, group='hitting', type='gameLog', season=season
-            )
-            splits = data.get('stats', [])
+            data = statsapi.get('person_stats', {
+                'personId': player_id,
+                'stats': 'gameLog',
+                'group': 'hitting',
+                'season': season,
+            })
+            splits = (data.get('stats') or [{}])[0].get('splits', [])
             errors.append(f"Season {season}: {len(splits)} splits")
             for split in splits:
                 stat      = split.get('stat', {})
