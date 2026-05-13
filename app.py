@@ -558,7 +558,8 @@ with tab_lineup:
                     html += f'<td style="padding:8px 10px;"><span style="font-weight:700; color:{color};">{row["Grade"]}</span></td>'
                     html += f'<td style="padding:8px 10px; font-weight:700;">{row["Projected"]}</td>'
                     html += f'<td style="padding:8px 10px;">{row["7g Avg"]}</td>'
-                    html += f'<td style="padding:8px 10px;">{row["Opp ERA"] if isinstance(row["Opp ERA"], str) else f"{row[\"Opp ERA\"]:.2f}"}</td>'
+                    era_display = row["Opp ERA"] if isinstance(row["Opp ERA"], str) else f'{row["Opp ERA"]:.2f}'
+                    html += f'<td style="padding:8px 10px;">{era_display}</td>'
                     html += '</tr>'
                 html += '</table>'
 
