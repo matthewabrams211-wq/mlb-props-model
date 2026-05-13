@@ -62,23 +62,71 @@ def get_player_team(player_id: int) -> str:
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_game_logs(player_id: int):
+    errors = []
     try:
-        df = get_game_logs(player_id)
-        return df, None
+        from datetime import datetime
+        current_year = datetime.now().year
+        seasons = [current_year - 2, current_year - 1, current_year]
+        all_rows = []
+        for season in seasons:
+            try:
+                data = statsapi.player_stat_data(
+                    player_id, group='hitting', type='gameLog', season=season
+                )
+                splits = data.get('stats', [])
+                errors.append(f"Season {season}: {len(splits)} splits returned")
+                for split in splits:
+                    stat = split.get('stat', {})
+                    game_info = split.get('game', {})
+                    ab = int(stat.get('atBats', 0))
+                    row = {
+                        'player_id': player_id,
+                        'season': season,
+                        'date': game_info.get('gameDate', split.get('date', '')),
+                        'game_pk': str(game_info.get('gamePk', '')),
+                        'opponent': split.get('opponent', {}).get('abbreviation', ''),
+                        'home_team': (split.get('team', {}).get('abbreviation', '')
+                                      if split.get('isHome', True)
+                                      else split.get('opponent', {}).get('abbreviation', '')),
+                        'is_home': int(split.get('isHome', True)),
+                        'ab': ab,
+                        'h':   int(stat.get('hits', 0)),
+                        'r':   int(stat.get('runs', 0)),
+                        'rbi': int(stat.get('rbi', 0)),
+                        'd':   int(stat.get('doubles', 0)),
+                        't':   int(stat.get('triples', 0)),
+                        'hr':  int(stat.get('homeRuns', 0)),
+                        'bb':  int(stat.get('baseOnBalls', 0)),
+                        'k':   int(stat.get('strikeOuts', 0)),
+                        'sb':  int(stat.get('stolenBases', 0)),
+                    }
+                    all_rows.append(row)
+            except Exception as e:
+                errors.append(f"Season {season} error: {e}")
+
+        if not all_rows:
+            return pd.DataFrame(), ' | '.join(errors)
+
+        import pandas as pd
+        df = pd.DataFrame(all_rows)
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['date'])
+        df = df.sort_values('date').reset_index(drop=True)
+        df = df[df['ab'] > 0].reset_index(drop=True)
+        errors.append(f"Final rows after filtering: {len(df)}")
+        return df, ' | '.join(errors)
     except Exception as e:
-        return pd.DataFrame(), str(e)
+        return pd.DataFrame(), f'Unexpected error: {e}'
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def run_model(player_id: int, pitcher_id, is_home: bool,
               park_override: str, temp: float, wind_speed: float, wind_dir_code: int):
-    df, fetch_error = fetch_game_logs(player_id)
-    if fetch_error:
-        return {'error': f'Data fetch failed: {fetch_error}'}
+    df, debug_msg = fetch_game_logs(player_id)
     if df.empty:
-        return {'error': 'No game log data returned from MLB API. The player may be inactive or the API is unavailable.'}
+        return {'error': f'No game data returned. Debug: {debug_msg}'}
     if len(df) < 25:
-        return {'error': f'Only {len(df)} games found — need at least 25 to run a prediction.'}
+        return {'error': f'Only {len(df)} games found (need 25). Debug: {debug_msg}'}
 
     df_feat = build_features(df, fetch_weather=True, override_pitcher_id=pitcher_id)
 
@@ -263,6 +311,11 @@ with tab_player:
         with st.spinner('Fetching data & running model (first run may take a minute)...'):
             result = run_model(player_id, pitcher_id, is_home,
                                park_override, temp, wind_speed, wind_code)
+
+        # Show debug info
+        _, debug_info = fetch_game_logs(player_id)
+        if debug_info:
+            st.caption(f'Debug: {debug_info}')
 
         if result is None or 'error' in result:
             msg = result['error'] if result and 'error' in result else 'Unknown error.'
